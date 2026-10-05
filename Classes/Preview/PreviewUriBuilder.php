@@ -1,5 +1,7 @@
 <?php
-declare(strict_types = 1);
+
+declare(strict_types=1);
+
 namespace F7\Preview\Preview;
 
 /*
@@ -11,7 +13,6 @@ namespace F7\Preview\Preview;
  */
 
 use F7\Preview\Utility\PreviewUtility;
-use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 
 class PreviewUriBuilder
 {

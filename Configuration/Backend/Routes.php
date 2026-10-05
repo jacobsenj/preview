@@ -7,10 +7,10 @@
 return [
     'tx_preview_addLink' => [
         'path' => '/tx_preview/addLink',
-        'target' => \F7\Preview\Controller\PreviewController::class . '::addLinkAction'
+        'target' => \F7\Preview\Controller\PreviewController::class . '::addLinkAction',
     ],
     'tx_preview_removeLink' => [
         'path' => '/tx_preview/removeLink',
-        'target' => \F7\Preview\Controller\PreviewController::class . '::removeLinkAction'
+        'target' => \F7\Preview\Controller\PreviewController::class . '::removeLinkAction',
     ],
 ];

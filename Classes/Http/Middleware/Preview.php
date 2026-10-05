@@ -1,5 +1,6 @@
 <?php
-declare(strict_types = 1);
+
+declare(strict_types=1);
 
 namespace F7\Preview\Http\Middleware;
 
@@ -18,34 +19,27 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Symfony\Component\HttpFoundation\Cookie;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\Context\UserAspect;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Http\NormalizedParams;
 use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use Symfony\Component\HttpFoundation\Cookie;
 
 /**
  * Middleware to detect "preview mode" so that a hidden language is shown in the frontend
  */
 class Preview implements MiddlewareInterface
 {
-    /**
-     * @var Context
-     */
-    protected $context;
+    public function __construct(
+        protected readonly Context $context,
+        protected readonly ConnectionPool $connectionPool,
+    ) {}
 
     public const REQUEST_ATTRIBUTE = 'tx_preview';
-
-
-    public function __construct(?Context $context = null)
-    {
-        $this->context = $context ?? GeneralUtility::makeInstance(Context::class);
-    }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -76,14 +70,14 @@ class Preview implements MiddlewareInterface
         if ($request->getQueryParams()[PreviewUriBuilder::PARAMETER_NAME] ?? false) {
             /** @var NormalizedParams $normalizedParams */
             $normalizedParams = $request->getAttribute('normalizedParams');
-            $cookie = new Cookie(
-                name: PreviewUriBuilder::PARAMETER_NAME,
-                value: $hash,
-                path: $normalizedParams->getSitePath(),
-                secure: true,
-                httpOnly: true
-            );
-            return $response->withAddedHeader('Set-Cookie', $cookie->__toString());
+            $cookie = Cookie::create(PreviewUriBuilder::PARAMETER_NAME)
+                ->withValue($hash)
+                ->withPath($normalizedParams->getSitePath())
+                ->withSecure(true)
+                ->withHttpOnly(true)
+                ->withSameSite(Cookie::SAMESITE_LAX);
+
+            return $response->withAddedHeader('Set-Cookie', (string)$cookie);
         }
         return $response;
     }
@@ -104,14 +98,12 @@ class Preview implements MiddlewareInterface
         setcookie(PreviewUriBuilder::PARAMETER_NAME, $inputCode, 0, $normalizedParams->getSitePath(), '', true, true);
     }
 
-
-
     /**
      * Creates a preview user and sets the current page ID (for accessing the page)
      */
     protected function initializePreviewUser(SiteLanguage $language, int $targetPid): void
     {
-        $previewUser = GeneralUtility::makeInstance(PreviewUserAuthentication::class, $language);
+        $previewUser = new PreviewUserAuthentication($language);
         $previewUser->setWebmounts([$targetPid]);
         $GLOBALS['BE_USER'] = $previewUser;
 
@@ -121,11 +113,11 @@ class Preview implements MiddlewareInterface
     /**
      * Register the backend user as aspect
      */
-    protected function setBackendUserAspect(BackendUserAuthentication $user = null): void
+    protected function setBackendUserAspect(?BackendUserAuthentication $user = null): void
     {
         $this->context->setAspect(
             'backend.user',
-            GeneralUtility::makeInstance(UserAspect::class, $user)
+            new UserAspect($user)
         );
 
     }
@@ -136,8 +128,7 @@ class Preview implements MiddlewareInterface
      */
     protected function verifyHash(string $hash, SiteLanguage $language): bool
     {
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
-            ->getQueryBuilderForTable('tx_preview');
+        $queryBuilder = $this->connectionPool->getQueryBuilderForTable('tx_preview');
         $row = $queryBuilder
             ->select('*')
             ->from('tx_preview')
@@ -165,18 +156,11 @@ class Preview implements MiddlewareInterface
         return (int)$row['sys_language_uid'] === $language->getLanguageId();
     }
 
-
-    /**
-     * @param string $hash
-     * @return int
-     * @throws \Doctrine\DBAL\DBALException
-     * @throws \Doctrine\DBAL\Driver\Exception
-     */
     protected function findTargetPid(string $hash): int
     {
         $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
             ->getQueryBuilderForTable('tx_preview');
-        return $queryBuilder
+        return (int)$queryBuilder
             ->select('pid')
             ->from('tx_preview')
             ->where(
@@ -187,60 +171,6 @@ class Preview implements MiddlewareInterface
             )
             ->setMaxResults(1)
             ->executeQuery()
-            ->fetchOne() ?? 0;
-    }
-
-    /**
-     * Simulate dates for preview functionality
-     * When previewing a time restricted page from the backend, the parameter ADMCMD_simTime it added containing
-     * a timestamp with the time to preview. The globals 'SIM_EXEC_TIME' and 'SIM_ACCESS_TIME' and the 'DateTimeAspect'
-     * are used to simulate rendering at that point in time.
-     * Ideally the global access is removed in future versions.
-     * This functionality needs to be loaded after BackendAuthenticator as it is only relevant for
-     * logged in backend users and needs to be done before any page resolving starts.
-     *
-     * @param ServerRequestInterface $request
-     * @return bool
-     */
-    protected function simulateDate(ServerRequestInterface $request): bool
-    {
-        /* $pageId = $GLOBALS['TSFE']->id;
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
-            ->getQueryBuilderForTable('pages');
-        $row = $queryBuilder
-            ->select('starttime, endtime')
-            ->from('pages')
-            ->where(
-                $queryBuilder->expr()->eq(
-                    'uid',
-                    $queryBuilder->createNamedParameter(
-                        $pageId,
-                        \PDO::PARAM_INT
-                    )
-                )
-            )
-            ->setMaxResults(1)
-            ->execute()
-            ->fetch();
-
-        */
-
-        $queryTime = $request->getQueryParams()['ADMCMD_simTime'] ?? false;
-        if (!$queryTime) {
-            return false;
-        }
-
-        $simulatedDate = new \DateTimeImmutable('@' . $queryTime);
-
-        $GLOBALS['SIM_EXEC_TIME'] = $queryTime;
-        $GLOBALS['SIM_ACCESS_TIME'] = $queryTime - $queryTime % 60;
-        $this->context->setAspect(
-            'date',
-            GeneralUtility::makeInstance(
-                DateTimeAspect::class,
-                $simulatedDate
-            )
-        );
-        return true;
+            ->fetchOne();
     }
 }

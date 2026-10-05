@@ -1,5 +1,7 @@
 <?php
-declare(strict_types = 1);
+
+declare(strict_types=1);
+
 namespace F7\Preview\Authentication;
 
 /*
@@ -28,11 +30,10 @@ class PreviewUserAuthentication extends BackendUserAuthentication
 
     public function __construct(SiteLanguage $siteLanguage)
     {
-        parent::__construct();
-        // uid > 0 is needed, but we want no walid uid!
-        $this->user['uid'] = 0.1;
         $this->name = PreviewUriBuilder::PARAMETER_NAME;
         $this->siteLanguage = $siteLanguage;
+        // uid > 0 is needed, but we want no valid uid!
+        $this->user['uid'] = 0.1;
     }
 
     /**
@@ -49,13 +50,16 @@ class PreviewUserAuthentication extends BackendUserAuthentication
     /**
      * This user is always allowed to see the current language
      *
-     * @param int $langValue
+     * @param int|SiteLanguage|string $langValue
      * @return bool
      */
     public function checkLanguageAccess($langValue): bool
     {
         if ($this->siteLanguage === null) {
             return false;
+        }
+        if ($langValue instanceof SiteLanguage) {
+            $langValue = $langValue->getLanguageId();
         }
         return (int)$langValue === $this->siteLanguage->getLanguageId();
     }

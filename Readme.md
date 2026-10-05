@@ -8,7 +8,7 @@ through generated preview URLs without the need for a backend login.
 
 ## Requirements
 
-* TYPO3 13.1
+* TYPO3 13.4 or 14.3
 
 ## Installation and Setup
 Install the extension via your preferred way. The extension will add one database table to the database.

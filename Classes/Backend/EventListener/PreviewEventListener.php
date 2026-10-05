@@ -4,19 +4,20 @@ declare(strict_types=1);
 
 namespace F7\Preview\Backend\EventListener;
 
-use TYPO3\CMS\Backend\Controller\Event\ModifyPageLayoutContentEvent;
 use F7\Preview\Utility\PreviewUtility;
-use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
+use TYPO3\CMS\Backend\Controller\Event\ModifyPageLayoutContentEvent;
+use TYPO3\CMS\Backend\Routing\UriBuilder;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Database\Query\Restriction\WorkspaceRestriction;
+use TYPO3\CMS\Core\Page\PageRenderer;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Fluid\View\StandaloneView;
-use TYPO3\CMS\Core\Page\PageRenderer;
+use TYPO3\CMS\Core\View\ViewFactoryData;
+use TYPO3\CMS\Core\View\ViewFactoryInterface;
 
-final  class PreviewEventListener
+final class PreviewEventListener
 {
     /**
      * Page is not published in these languages.
@@ -34,20 +35,23 @@ final  class PreviewEventListener
 
     public function __construct(
         private readonly PageRenderer $pageRenderer,
+        private readonly SiteFinder $siteFinder,
+        private readonly ConnectionPool $connectionPool,
+        private readonly ViewFactoryInterface $viewFactory,
+        private readonly UriBuilder $uriBuilder,
     ) {}
 
     public function __invoke(ModifyPageLayoutContentEvent $event): void
     {
+        $request = $event->getRequest();
         // Get the current page ID
-        $pageId = (int)($event->getRequest()->getQueryParams()['id'] ?? 0);
+        $pageId = (int)($request->getQueryParams()['id'] ?? 0);
 
         // remove all outdated preview links
         PreviewUtility::removeOutdatedLinks();
 
-        $backendUriBuilder = GeneralUtility::makeInstance(\TYPO3\CMS\Backend\Routing\UriBuilder::class);
-
-        $site = GeneralUtility::makeInstance(SiteFinder::class)->getSiteByPageId($pageId);
-        $pageIsTranslatedInLanguages = $this->getLanguageVariants($pageId);
+        $site = $this->siteFinder->getSiteByPageId($pageId);
+        $pageIsTranslatedInLanguages = $this->getLanguageVariants($pageId, (int)($request->getAttribute('beUser')?->workspace ?? 0));
 
         // If all translations of this page are already published, do not render anything and leave.
         if (empty($this->notPublishedLanguages)) {
@@ -59,30 +63,30 @@ final  class PreviewEventListener
             if (in_array($language->getLanguageId(), $pageIsTranslatedInLanguages) && in_array($language->getLanguageId(), $this->notPublishedLanguages)) {
                 $linkInformation = PreviewUtility::getPreviewLink($pageId, $language->getLanguageId());
                 if ($linkInformation === []) {
-                    $actionUri = $backendUriBuilder->buildUriFromRoutePath(
+                    $actionUri = $this->uriBuilder->buildUriFromRoutePath(
                         '/tx_preview/addLink',
                         [
                             'addLink' => [
                                 'page' => $pageId,
                                 'language' => $language->getLanguageId(),
-                            ]
+                            ],
                         ]
                     );
                 } else {
-                    $actionUri = $backendUriBuilder->buildUriFromRoutePath(
+                    $actionUri = $this->uriBuilder->buildUriFromRoutePath(
                         '/tx_preview/removeLink',
                         [
                             'removeLink' => [
                                 'page' => $pageId,
                                 'language' => $language->getLanguageId(),
-                            ]
+                            ],
                         ]
                     );
                 }
 
                 $parameters = [
                     'tx_preview' => $linkInformation['hash'] ?? '',
-                    '_language' => $language->getLanguageId()
+                    '_language' => $language->getLanguageId(),
                 ];
 
                 // is the page restricted by start- and/ or endtime? Then add page id and simulate time parameter
@@ -97,19 +101,19 @@ final  class PreviewEventListener
                 $languages[] = [
                     'title' => $language->getNavigationTitle(),
                     'flagIdentifier' => $language->getFlagIdentifier(),
-                    'previewLink' => PreviewUtility::getPreviewLink($pageId, $language->getLanguageId()),
+                    'previewLink' => $linkInformation !== [],
                     'url' => (string)$site->getRouter()->generateUri($pageId, $parameters),
-                    'action' => $actionUri
+                    'action' => $actionUri,
                 ];
             }
         }
 
         $this->pageRenderer->loadJavaScriptModule('@f7media/preview/Preview.js');
 
-        $view = GeneralUtility::makeInstance(StandaloneView::class);
-        $view->setTemplateRootPaths(['EXT:preview/Resources/Private/Templates/Backend']);
-
-        $view->setTemplate('Show');
+        $view = $this->viewFactory->create(new ViewFactoryData(
+            templatePathAndFilename: 'EXT:preview/Resources/Private/Templates/Backend/Show.html',
+            request: $request
+        ));
         $view->assignMultiple([
             'languages' => $languages,
         ]);
@@ -120,13 +124,12 @@ final  class PreviewEventListener
     /**
      * This method returns an array with all language ids the current page is translated to.
      */
-    private function getLanguageVariants(int $pageId): array
+    private function getLanguageVariants(int $pageId, int $workspaceId): array
     {
-
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
+        $queryBuilder = $this->connectionPool->getQueryBuilderForTable('pages');
         $queryBuilder->getRestrictions()->removeAll()
             ->add(GeneralUtility::makeInstance(DeletedRestriction::class))
-            ->add(GeneralUtility::makeInstance(WorkspaceRestriction::class, (int)$this->getBackendUser()->workspace));
+            ->add(GeneralUtility::makeInstance(WorkspaceRestriction::class, $workspaceId));
         $queryBuilder->select(
             'uid',
             $GLOBALS['TCA']['pages']['ctrl']['languageField'],
@@ -167,7 +170,7 @@ final  class PreviewEventListener
         return $languages;
     }
 
-    public function getBackendUser(): BackendUserAuthentication
+    public function getBackendUser(): \TYPO3\CMS\Core\Authentication\BackendUserAuthentication
     {
         return $GLOBALS['BE_USER'];
     }

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace F7\Preview\Preview\Exception;
 
 /*
@@ -11,6 +12,4 @@ namespace F7\Preview\Preview\Exception;
  * of the License, or any later version.
  */
 
-class SiteMismatchException extends \RuntimeException
-{
-}
+class SiteMismatchException extends \RuntimeException {}

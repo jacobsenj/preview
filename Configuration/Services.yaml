@@ -7,8 +7,10 @@ services:
   F7\Preview\:
     resource: '../Classes/*'
 
+  F7\Preview\Controller\PreviewController:
+    public: true
+
   F7\Preview\Backend\EventListener\PreviewEventListener:
     tags:
       - name: event.listener
         identifier: 'preview/backend/modify-page-module-content'
-

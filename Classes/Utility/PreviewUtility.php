@@ -1,11 +1,11 @@
 <?php
+
 namespace F7\Preview\Utility;
 
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 
 class PreviewUtility
 {
@@ -87,7 +87,7 @@ class PreviewUtility
                     'pid' => $pageId,
                     'tstamp' => $context->getPropertyFromAspect('date', 'timestamp'),
                     'endtime' => $context->getPropertyFromAspect('date', 'timestamp') + ($lifetime * 24 * 60 * 60),
-                    'sys_language_uid' => $languageId
+                    'sys_language_uid' => $languageId,
                 ]
             );
     }

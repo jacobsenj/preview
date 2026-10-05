@@ -8,6 +8,8 @@ composer.lock
 .env
 config
 .idea
+CI/
+vendor/
 
 composer.json.testing
 .cache
